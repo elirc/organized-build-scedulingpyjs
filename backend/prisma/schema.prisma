@@ -1,0 +1,262 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   String        @id @default(uuid())
+  email                String        @unique
+  passwordHash         String
+  firstName            String
+  lastName             String
+  role                 Role
+  isActive             Boolean       @default(true)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  staffProfile         StaffProfile?
+  customerProfile      CustomerProfile?
+  createdAppointments  Appointment[] @relation("CreatedAppointments")
+  auditEvents          AuditEvent[]
+  refreshTokens        RefreshToken[]
+}
+
+model StaffProfile {
+  id                   String               @id @default(uuid())
+  userId               String               @unique
+  user                 User                 @relation(fields: [userId], references: [id])
+  displayName          String
+  bio                  String?
+  timezone             String
+  isActive             Boolean              @default(true)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  services             StaffService[]
+  availabilityWindows  AvailabilityWindow[]
+  appointments         Appointment[]
+}
+
+model CustomerProfile {
+  id                   String         @id @default(uuid())
+  userId               String?        @unique
+  user                 User?          @relation(fields: [userId], references: [id])
+  firstName            String
+  lastName             String
+  email                String
+  phone                String?
+  timezone             String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  appointments         Appointment[]
+
+  @@index([email])
+}
+
+model Service {
+  id                   String         @id @default(uuid())
+  name                 String
+  description          String?
+  durationMinutes      Int
+  bufferBeforeMinutes  Int            @default(0)
+  bufferAfterMinutes   Int            @default(0)
+  isActive             Boolean        @default(true)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  staffServices        StaffService[]
+  appointments         Appointment[]
+}
+
+model StaffService {
+  id                   String       @id @default(uuid())
+  staffId              String
+  staff                StaffProfile @relation(fields: [staffId], references: [id])
+  serviceId            String
+  service              Service      @relation(fields: [serviceId], references: [id])
+  createdAt            DateTime     @default(now())
+
+  @@unique([staffId, serviceId])
+  @@index([serviceId])
+}
+
+model AvailabilityWindow {
+  id                   String           @id @default(uuid())
+  staffId              String
+  staff                StaffProfile     @relation(fields: [staffId], references: [id])
+  type                 AvailabilityType @default(AVAILABLE)
+  dayOfWeek            Int?
+  startTimeLocal       String?
+  endTimeLocal         String?
+  startDateUtc         DateTime?
+  endDateUtc           DateTime?
+  timezone             String
+  isRecurringWeekly    Boolean          @default(false)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  @@index([staffId])
+  @@index([type])
+}
+
+model Appointment {
+  id                   String                @id @default(uuid())
+  customerId           String
+  customer             CustomerProfile       @relation(fields: [customerId], references: [id])
+  staffId              String
+  staff                StaffProfile          @relation(fields: [staffId], references: [id])
+  serviceId            String
+  service              Service               @relation(fields: [serviceId], references: [id])
+  createdById          String?
+  createdBy            User?                 @relation("CreatedAppointments", fields: [createdById], references: [id])
+  status               AppointmentStatus     @default(CONFIRMED)
+  source               AppointmentSource     @default(CUSTOMER_PORTAL)
+  startTimeUtc         DateTime
+  endTimeUtc           DateTime
+  timezone             String
+  cancellationReason   String?
+  rescheduledFromId    String?
+  recurrenceSeriesId   String?
+  recurrenceSeries     RecurrenceSeries?     @relation(fields: [recurrenceSeriesId], references: [id])
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  cancelledAt          DateTime?
+  completedAt          DateTime?
+  notifications        Notification[]
+  activities           AppointmentActivity[]
+
+  @@index([staffId, startTimeUtc])
+  @@index([customerId])
+  @@index([status])
+  @@index([startTimeUtc])
+  @@index([recurrenceSeriesId])
+}
+
+model RecurrenceSeries {
+  id                   String              @id @default(uuid())
+  customerId           String
+  staffId              String
+  serviceId            String
+  frequency            RecurrenceFrequency
+  interval             Int                 @default(1)
+  count                Int?
+  untilDateUtc         DateTime?
+  timezone             String
+  startTimeLocal       String
+  durationMinutes      Int
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  cancelledAt          DateTime?
+  appointments         Appointment[]
+}
+
+model Notification {
+  id                   String             @id @default(uuid())
+  appointmentId        String
+  appointment          Appointment        @relation(fields: [appointmentId], references: [id])
+  recipientEmail       String
+  type                 NotificationType
+  status               NotificationStatus @default(PENDING)
+  scheduledForUtc      DateTime
+  sentAt               DateTime?
+  attempts             Int                @default(0)
+  lastError            String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([status, scheduledForUtc])
+  @@index([appointmentId])
+}
+
+model AppointmentActivity {
+  id                   String      @id @default(uuid())
+  appointmentId        String
+  appointment          Appointment @relation(fields: [appointmentId], references: [id])
+  actorId              String?
+  action               String
+  oldValue             String?
+  newValue             String?
+  metadata             Json?
+  createdAt            DateTime    @default(now())
+
+  @@index([appointmentId])
+}
+
+model AuditEvent {
+  id                   String   @id @default(uuid())
+  actorId              String?
+  actor                User?    @relation(fields: [actorId], references: [id])
+  entityType           String
+  entityId             String
+  action               String
+  metadata             Json?
+  ipAddress            String?
+  userAgent            String?
+  createdAt            DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+}
+
+model RefreshToken {
+  id                   String   @id @default(uuid())
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id])
+  tokenHash            String
+  expiresAt            DateTime
+  revokedAt            DateTime?
+  createdAt            DateTime @default(now())
+
+  @@index([userId])
+}
+
+enum Role {
+  SYSTEM_ADMIN
+  MANAGER
+  SCHEDULER
+  STAFF
+  CUSTOMER
+  READ_ONLY
+}
+
+enum AvailabilityType {
+  AVAILABLE
+  BLOCKED
+}
+
+enum AppointmentStatus {
+  REQUESTED
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+  RESCHEDULED
+}
+
+enum AppointmentSource {
+  CUSTOMER_PORTAL
+  ADMIN_BOOKING
+  STAFF_BOOKING
+  SYSTEM_GENERATED
+}
+
+enum RecurrenceFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum NotificationType {
+  APPOINTMENT_CONFIRMATION
+  APPOINTMENT_CANCELLED
+  APPOINTMENT_RESCHEDULED
+  APPOINTMENT_REMINDER
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}

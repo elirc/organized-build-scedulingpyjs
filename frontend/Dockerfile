@@ -1,0 +1,10 @@
+FROM node:22-alpine
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY frontend/package.json frontend/package.json
+RUN npm install --workspaces --include-workspace-root
+COPY . .
+WORKDIR /app/frontend
+RUN npm run build
+CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0"]
+
